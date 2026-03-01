@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"slices"
 )
+
+var logicalRouters []LogicalRouter
 
 type uuid struct {
 	uuid string
@@ -17,9 +20,9 @@ type DeviceParser interface {
 }
 
 type LogicalRouter struct {
-	name  string
-	uuid  string
-	ports []string
+	Name  string   `json:"name"`
+	UUID  string   `json:"uuid"`
+	Ports []string `json:"ports"`
 }
 
 type LogicalSwitch struct {
@@ -58,13 +61,28 @@ func ParseNetworkDevice(routers *[]LogicalRouter, devJson OVNRawJson) {
 
 	for _, r := range devJson.Records {
 		var router LogicalRouter
-		router.name = r[indexMap["name"]].(string)
-		router.uuid = r[indexMap["_uuid"]].([]any)[1].(string)
+		router.Name = r[indexMap["name"]].(string)
+		router.UUID = r[indexMap["_uuid"]].([]any)[1].(string)
 		for _, port := range r[indexMap["ports"]].([]any)[1].([]any) {
-			router.ports = append(router.ports, port.([]any)[1].(string))
+			router.Ports = append(router.Ports, port.([]any)[1].(string))
 		}
 		*routers = append(*routers, router)
 	}
+}
+
+type api struct {
+	addr string
+}
+
+func (a *api) getLogicalRoutersHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	err := json.NewEncoder(w).Encode(logicalRouters)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
@@ -77,6 +95,21 @@ func main() {
 
 	ParseNetworkDevice(&routers, routerJson)
 
+	logicalRouters = routers
+
 	fmt.Printf("%+v", routers)
+
+	api := &api{addr: ":8080"}
+
+	mux := http.NewServeMux()
+
+	srv := &http.Server{
+		Addr:    api.addr,
+		Handler: mux,
+	}
+
+	mux.HandleFunc("GET /routers", api.getLogicalRoutersHandler)
+
+	srv.ListenAndServe()
 
 }
