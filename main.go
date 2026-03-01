@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"slices"
 )
@@ -27,22 +28,35 @@ type LogicalSwitch struct {
 	ports []string
 }
 
-type OVNRawTable struct {
+type OVNRawJson struct {
 	Records [][]any  `json:"data"`
 	Header  []string `json:"headings"`
 }
 
-func ParseNetworkDevice(routers *[]LogicalRouter, table OVNRawTable) {
+func ReadOVNRawJson(path string, raw *OVNRawJson) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("Can't read file: %v", err)
+	}
+
+	err = json.Unmarshal(bytes, &raw)
+	if err != nil {
+		log.Fatalf("Can't unmarshal JSON data: %v", err)
+	}
+
+}
+
+func ParseNetworkDevice(routers *[]LogicalRouter, devJson OVNRawJson) {
 	indexMap := make(map[string]int)
 	headers := []string{"_uuid", "name", "ports"}
 
-	for i, v := range table.Header {
+	for i, v := range devJson.Header {
 		if slices.Contains(headers, v) {
 			indexMap[v] = i
 		}
 	}
 
-	for _, r := range table.Records {
+	for _, r := range devJson.Records {
 		var router LogicalRouter
 		router.name = r[indexMap["name"]].(string)
 		router.uuid = r[indexMap["_uuid"]].([]any)[1].(string)
@@ -54,20 +68,14 @@ func ParseNetworkDevice(routers *[]LogicalRouter, table OVNRawTable) {
 }
 
 func main() {
-	bytes, err := os.ReadFile("./logical_router.json")
-	if err != nil {
-		panic(err)
-	}
 
-	var lrt OVNRawTable
-	err = json.Unmarshal(bytes, &lrt)
-	if err != nil {
-		panic(err)
-	}
+	var routerJson OVNRawJson
+
+	ReadOVNRawJson("testdata/logical_router.json", &routerJson)
 
 	var routers []LogicalRouter
 
-	ParseNetworkDevice(&routers, lrt)
+	ParseNetworkDevice(&routers, routerJson)
 
 	fmt.Printf("%+v", routers)
 
