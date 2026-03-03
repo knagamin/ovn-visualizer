@@ -2,8 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"slices"
@@ -26,9 +25,9 @@ type LogicalRouter struct {
 }
 
 type LogicalSwitch struct {
-	name  string
-	uuid  string
-	ports []string
+	Name  string   `json:"name"`
+	UUID  string   `json:"uuid"`
+	Ports []string `json:"ports"`
 }
 
 type OVNRawJson struct {
@@ -39,12 +38,12 @@ type OVNRawJson struct {
 func ReadOVNRawJson(path string, raw *OVNRawJson) {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatalf("Can't read file: %v", err)
+		slog.Error("Can't read file")
 	}
 
 	err = json.Unmarshal(bytes, &raw)
 	if err != nil {
-		log.Fatalf("Can't unmarshal JSON data: %v", err)
+		slog.Error("Can't unmarshal JSON data")
 	}
 
 }
@@ -87,17 +86,21 @@ func (a *api) getLogicalRoutersHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	var routerJson OVNRawJson
 
+	slog.Info("Load OVN Topology info from JSON File")
 	ReadOVNRawJson("testdata/logical_router.json", &routerJson)
 
 	var routers []LogicalRouter
 
 	ParseNetworkDevice(&routers, routerJson)
 
-	logicalRouters = routers
+	slog.Info("successfully Loaded")
 
-	fmt.Printf("%+v", routers)
+	logicalRouters = routers
 
 	api := &api{addr: ":8080"}
 
@@ -109,6 +112,8 @@ func main() {
 	}
 
 	mux.HandleFunc("GET /routers", api.getLogicalRoutersHandler)
+
+	slog.Info("starting api server...", "addr", api.addr)
 
 	srv.ListenAndServe()
 
